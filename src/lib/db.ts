@@ -36,9 +36,13 @@ export function formatChannelUsername(raw: string): string {
   let cleaned = raw.trim();
   cleaned = cleaned.replace(/^https?:\/\/t\.me\//i, '');
   cleaned = cleaned.replace(/^t\.me\//i, '');
-  cleaned = cleaned.replace(/^@+/, '');
   cleaned = cleaned.replace(/[/?#].*$/, '');
   cleaned = cleaned.trim();
+  if (!cleaned) return '';
+  if (/^-?\d+$/.test(cleaned)) {
+    return cleaned;
+  }
+  cleaned = cleaned.replace(/^@+/, '');
   if (!cleaned) return '';
   return `@${cleaned}`;
 }
@@ -660,13 +664,13 @@ export function addMonitoredChannel(
 ): { success: boolean; channel?: MonitoredChannel; error?: string } {
   const username = formatChannelUsername(rawChannel);
   if (!username || username === '@') {
-    return { success: false, error: 'Nome de canal inválido. Use o formato @nome_do_canal ou t.me/canal' };
+    return { success: false, error: 'Nome de canal inválido. Use o formato @nome_do_canal ou selecione um canal da lista.' };
   }
-  const isValidTelegramUsername = /^@[a-zA-Z0-9_]{3,32}$/.test(username);
+  const isValidTelegramUsername = /^@[a-zA-Z0-9_]{3,32}$/.test(username) || /^-?\d{5,25}$/.test(username);
   if (!isValidTelegramUsername) {
     return {
       success: false,
-      error: 'O nome do canal deve ter entre 3 e 32 caracteres alfanuméricos ou underscores (ex: @ofertaztelegram).',
+      error: 'O nome do canal deve ter entre 3 e 32 caracteres alfanuméricos ou ser um ID numérico válido do Telegram.',
     };
   }
 

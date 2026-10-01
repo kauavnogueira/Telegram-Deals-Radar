@@ -13,6 +13,7 @@ test('formatChannelUsername sanitizes handles and links correctly', () => {
   assert.equal(formatChannelUsername('ofertaz'), '@ofertaz');
   assert.equal(formatChannelUsername('https://t.me/ofertaz'), '@ofertaz');
   assert.equal(formatChannelUsername('t.me/promobit_oficial?param=1'), '@promobit_oficial');
+  assert.equal(formatChannelUsername('-1001906755174'), '-1001906755174');
   assert.equal(formatChannelUsername(''), '');
 });
 
@@ -50,4 +51,13 @@ test('addMonitoredChannel, getMonitoredChannels and removeMonitoredChannel work 
   // Verify removed
   const finalChannels = getMonitoredChannels();
   assert.equal(finalChannels.some((c) => c.username === testChannel), false);
+});
+
+test('addMonitoredChannel supports numeric Telegram IDs', () => {
+  const testId = '-1009998887776';
+  removeMonitoredChannel(testId);
+  const addRes = addMonitoredChannel(testId, 'Canal Privado Teste');
+  assert.equal(addRes.success, true);
+  assert.equal(addRes.channel?.username, testId);
+  removeMonitoredChannel(testId);
 });

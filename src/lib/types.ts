@@ -87,3 +87,13 @@ export interface MonitoredChannel {
   productCount?: number;
 }
 
+export interface TelegramAccountChannel {
+  id: string;
+  title: string;
+  username: string | null;
+  identifier: string;
+  isChannel: boolean;
+  isGroup: boolean;
+  isMonitored?: boolean;
+}
+

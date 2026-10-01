@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   X,
   Radio,
@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   Package,
 } from 'lucide-react';
-import { MonitoredChannel } from '@/lib/types';
+import { MonitoredChannel, TelegramAccountChannel } from '@/lib/types';
 
 interface Props {
   isOpen: boolean;
@@ -33,7 +33,10 @@ export const ChannelManagerModal: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [syncingChannel, setSyncingChannel] = useState<string | null>(null);
-
+  const [telegramChannels, setTelegramChannels] = useState<TelegramAccountChannel[]>([]);
+  const [loadingTelegram, setLoadingTelegram] = useState(false);
+  const [telegramError, setTelegramError] = useState<string | null>(null);
+  const [manualInput, setManualInput] = useState(false);
   const fetchChannels = useCallback(async () => {
     setLoading(true);
     try {
@@ -49,15 +52,58 @@ export const ChannelManagerModal: React.FC<Props> = ({
     }
   }, []);
 
+  const fetchTelegramChannels = useCallback(async () => {
+    setLoadingTelegram(true);
+    setTelegramError(null);
+    try {
+      const res = await fetch('/api/channels/telegram');
+      const data = (await res.json()) as { channels?: TelegramAccountChannel[]; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao carregar canais da conta Telegram');
+      }
+      setTelegramChannels(data.channels || []);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao buscar canais do Telegram';
+      setTelegramError(msg);
+    } finally {
+      setLoadingTelegram(false);
+    }
+  }, []);
+
+  // Canais da conta que ainda NÃO estão sendo ouvidos/monitorados
+  const availableChannels = useMemo(() => {
+    const monitoredUsernames = new Set(
+      channels.flatMap((c) => [
+        c.username.toLowerCase(),
+        c.username.toLowerCase().replace(/^@/, ''),
+      ])
+    );
+
+    return telegramChannels.filter((tc) => {
+      const idMatch = tc.id ? monitoredUsernames.has(tc.id.toLowerCase()) : false;
+      const identifierMatch =
+        monitoredUsernames.has(tc.identifier.toLowerCase()) ||
+        monitoredUsernames.has(tc.identifier.toLowerCase().replace(/^@/, ''));
+      const usernameMatch = tc.username
+        ? monitoredUsernames.has(tc.username.toLowerCase()) ||
+          monitoredUsernames.has(tc.username.toLowerCase().replace(/^@/, ''))
+        : false;
+
+      return !idMatch && !identifierMatch && !usernameMatch;
+    });
+  }, [telegramChannels, channels]);
+
   useEffect(() => {
     if (isOpen) {
       fetchChannels();
+      fetchTelegramChannels();
       setError(null);
       setSuccess(null);
       setNewChannel('');
       setNewTitle('');
+      setManualInput(false);
     }
-  }, [isOpen, fetchChannels]);
+  }, [isOpen, fetchChannels, fetchTelegramChannels]);
 
   if (!isOpen) return null;
 
@@ -93,7 +139,7 @@ export const ChannelManagerModal: React.FC<Props> = ({
       setSuccess(data.message || 'Canal adicionado com sucesso!');
       setNewChannel('');
       setNewTitle('');
-      await fetchChannels();
+      await Promise.all([fetchChannels(), fetchTelegramChannels()]);
       if (onChannelsChanged) onChannelsChanged();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao adicionar canal';
@@ -222,21 +268,91 @@ export const ChannelManagerModal: React.FC<Props> = ({
         )}
 
         <form onSubmit={handleAddChannel} className="mb-4 p-3.5 rounded-xl bg-[#101625] border border-white/[0.07] space-y-2.5">
-          <div className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
-            <Plus className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Adicionar Novo Canal</span>
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Adicionar Novo Canal</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchTelegramChannels}
+                disabled={loadingTelegram}
+                title="Atualizar lista de canais da conta Telegram"
+                className="text-[11px] text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${loadingTelegram ? 'animate-spin text-indigo-400' : ''}`} />
+                <span className="hidden sm:inline">Atualizar canais</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setManualInput((prev) => !prev);
+                  setNewChannel('');
+                  setNewTitle('');
+                }}
+                className="text-[11px] text-indigo-400/80 hover:text-indigo-300 underline transition"
+              >
+                {manualInput ? 'Selecionar da conta' : 'Digitar manualmente'}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="sm:col-span-2">
-              <input
-                type="text"
-                value={newChannel}
-                onChange={(e) => setNewChannel(e.target.value)}
-                placeholder="@nome_do_canal ou t.me/canal"
-                className="w-full bg-[#0a0d16] border border-white/[0.09] rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 font-mono transition"
-                required
-              />
+              {manualInput ? (
+                <input
+                  type="text"
+                  value={newChannel}
+                  onChange={(e) => setNewChannel(e.target.value)}
+                  placeholder="@nome_do_canal, t.me/canal ou ID"
+                  className="w-full bg-[#0a0d16] border border-white/[0.09] rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 font-mono transition"
+                  required
+                  autoFocus
+                />
+              ) : (
+                <select
+                  value={newChannel}
+                  onChange={(e) => {
+                    const selectedVal = e.target.value;
+                    setNewChannel(selectedVal);
+                    const selected = availableChannels.find(
+                      (c) => c.identifier === selectedVal || c.username === selectedVal || c.id === selectedVal
+                    );
+                    if (selected && selected.title) {
+                      setNewTitle(selected.title);
+                    }
+                  }}
+                  disabled={loadingTelegram || adding}
+                  className="w-full bg-[#0a0d16] border border-white/[0.09] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 transition disabled:opacity-50"
+                  required
+                >
+                  {loadingTelegram ? (
+                    <option value="">Carregando canais da sua conta Telegram...</option>
+                  ) : telegramError ? (
+                    <option value="">Erro ao carregar canais ({telegramError})</option>
+                  ) : availableChannels.length === 0 ? (
+                    <option value="">
+                      {telegramChannels.length === 0
+                        ? 'Nenhum canal encontrado na conta'
+                        : 'Todos os canais da conta já estão sendo ouvidos'}
+                    </option>
+                  ) : (
+                    <>
+                      <option value="">Selecione um canal da sua conta ({availableChannels.length} disponíveis)...</option>
+                      {availableChannels.map((c) => (
+                        <option
+                          key={c.identifier || c.id}
+                          value={c.identifier}
+                          className="bg-[#0e1422] text-slate-100"
+                        >
+                          {c.title} {c.username ? `(${c.username})` : `[ID: ${c.id}]`}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              )}
             </div>
             <div>
               <input
@@ -249,9 +365,22 @@ export const ChannelManagerModal: React.FC<Props> = ({
             </div>
           </div>
 
+          {telegramError && !manualInput && (
+            <div className="text-[11px] text-amber-400/90 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{telegramError}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-1">
             <span className="text-[11px] text-slate-400">
-              Dica: Você deve ter entrado no canal na sua conta Telegram.
+              {manualInput
+                ? 'Dica: Você deve ter entrado no canal na sua conta Telegram.'
+                : loadingTelegram
+                ? 'Buscando canais da sua conta Telegram...'
+                : availableChannels.length > 0
+                ? `${availableChannels.length} canal(is) da sua conta disponível(is) para monitorar.`
+                : 'Todos os canais da sua conta já estão sendo monitorados.'}
             </span>
             <button
               type="submit"
