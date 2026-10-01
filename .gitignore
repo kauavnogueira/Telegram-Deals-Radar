@@ -1,0 +1,23 @@
+node_modules/
+
+# Next.js build e cache
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Base de dados de produtos
+/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Fotos dos produtos baixadas
+/public/images/products/*
+!/public/images/products/.gitkeep
+prod_*.jpg
+
+# Ambientes locais
+.env
+.env*.local
+!.env.example

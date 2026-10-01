@@ -1,0 +1,38 @@
+{
+  "name": "coletor-telegram",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "setup": "tsx src/scripts/setup.ts",
+    "dev": "tsx src/scripts/dev.ts",
+    "dev:web": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0",
+    "login": "tsx src/scripts/login.ts",
+    "collector": "tsx src/scripts/collect.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "fix:titles": "tsx src/scripts/fix-titles.ts",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "input": "^1.0.1",
+    "lucide-react": "^1.47.0",
+    "next": "^16.3.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-infinite-scroll-hook": "^6.0.1",
+    "telegram": "^2.26.22",
+    "teleproto": "^1.229.0",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}
