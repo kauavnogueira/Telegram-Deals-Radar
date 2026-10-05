@@ -4,7 +4,8 @@ import { NewMessage } from 'teleproto/events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseTelegramMessage, parseTelegramCoupon } from '../lib/parser';
-import { saveProduct, hasProductByMessageId, saveCoupon, getMonitoredChannels } from '../lib/db';
+import { saveProduct, hasProductByMessageId, saveCoupon, getMonitoredChannels, cleanupOldRecords } from '../lib/db';
+import { shouldNotifyProduct, sendTelegramNotification } from '../lib/notifier';
 const envPath = path.resolve(process.cwd(), '.env.local');
 let envContent = '';
 if (fs.existsSync(envPath)) {
@@ -56,6 +57,10 @@ async function main() {
   if (!fs.existsSync(imagesDir)) {
     fs.mkdirSync(imagesDir, { recursive: true });
   }
+  cleanupOldRecords(7);
+  setInterval(() => {
+    cleanupOldRecords(7);
+  }, 60 * 60 * 1000);
 
   async function downloadProductImage(msg: { id?: number; media?: unknown }): Promise<string | null> {
     if (!msg.media) return null;
@@ -142,6 +147,12 @@ async function main() {
         const cleanC = c.toLowerCase().replace('@', '');
         return cleanC === cleanChannelUsername || cleanChatTitle.includes(cleanC);
       });
+      if (!isMonitored) return;
+
+      const SEVEN_DAYS_AGO_SEC = Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+      if (message.date && message.date < SEVEN_DAYS_AGO_SEC) {
+        return;
+      }
       const coupon = parseTelegramCoupon(message.message, {
         channelName: channelUsername,
         messageId: message.id,
@@ -164,6 +175,21 @@ async function main() {
 
         saveProduct(product);
         console.log(`[oferta] ${product.title} - R$ ${product.price.toFixed(2)} (${channelUsername})`);
+
+        const check = shouldNotifyProduct(product);
+        if (check.shouldNotify) {
+          sendTelegramNotification(product)
+            .then((res) => {
+              if (res.success) {
+                console.log(`[alerta privado] Oferta enviada para seu Telegram: ${product.title}`);
+              } else if (res.error) {
+                console.warn(`[alerta privado] Falha ao enviar: ${res.error}`);
+              }
+            })
+            .catch((err) => {
+              console.warn('[alerta privado] Erro:', err);
+            });
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

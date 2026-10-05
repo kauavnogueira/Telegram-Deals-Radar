@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
     const sortBy = (searchParams.get('sortBy') as SortOption) || 'date_desc';
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 50;
     const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!, 10) : 0;
+    const withinDaysParam = searchParams.get('withinDays');
+    const withinDays = withinDaysParam !== null ? parseInt(withinDaysParam, 10) : 7;
 
     const data = getProducts({
       search,
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest) {
       sortBy,
       limit,
       offset,
+      withinDays,
     });
 
     return NextResponse.json(data);

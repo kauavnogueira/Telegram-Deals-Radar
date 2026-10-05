@@ -35,6 +35,7 @@ export interface CouponFilterQuery {
   channels?: string[];
   limit?: number;
   offset?: number;
+  withinDays?: number;
 }
 
 export type SortOption =
@@ -56,6 +57,7 @@ export interface ProductFilterQuery {
   sortBy?: SortOption;
   limit?: number;
   offset?: number;
+  withinDays?: number;
 }
 
 export interface CollectorStatus {

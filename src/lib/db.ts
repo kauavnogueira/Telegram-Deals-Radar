@@ -139,6 +139,12 @@ function initTables(db: DatabaseSync) {
   }
 
   try {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    db.exec(`DELETE FROM products WHERE created_at < ${cutoff};`);
+    db.exec(`DELETE FROM coupons WHERE created_at < ${cutoff};`);
+  } catch {
+  }
+  try {
     interface CountResult {
       count: number;
     }
@@ -367,6 +373,13 @@ export function getProducts(query: ProductFilterQuery = {}): {
     conditions.push("coupon IS NOT NULL AND coupon != ''");
   }
 
+  const withinDays = query.withinDays !== undefined ? query.withinDays : 7;
+  if (withinDays !== null && withinDays !== undefined && withinDays > 0) {
+    const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+    conditions.push('created_at >= ?');
+    params.push(cutoff);
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const countStmt = db.prepare(`SELECT COUNT(*) as count FROM products ${whereClause}`);
@@ -422,6 +435,71 @@ export function clearAllProducts(): void {
   db.exec('DELETE FROM products;');
 }
 
+export function cleanupOldRecords(days = 7): {
+  deletedProducts: number;
+  deletedCoupons: number;
+  deletedImages: number;
+} {
+  const db = getDatabase();
+  const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  let deletedImages = 0;
+  try {
+    interface OldProductRow {
+      image_url?: string | null;
+    }
+    const oldProductsStmt = db.prepare('SELECT image_url FROM products WHERE created_at < ?');
+    const oldProducts = oldProductsStmt.all(cutoffTime) as unknown as OldProductRow[];
+    const imagesDir = path.resolve(process.cwd(), 'public', 'images', 'products');
+
+    for (const prod of oldProducts) {
+      if (prod.image_url && prod.image_url.startsWith('/images/products/')) {
+        const filename = path.basename(prod.image_url);
+        const filePath = path.join(imagesDir, filename);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            deletedImages++;
+          }
+        } catch (e) {
+          console.warn(`[cleanup] Falha ao deletar imagem ${filePath}:`, e);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[cleanup] Erro ao buscar imagens antigas:', err);
+  }
+
+  interface RunResult {
+    changes?: number;
+  }
+
+  let deletedProducts = 0;
+  try {
+    const delProductsStmt = db.prepare('DELETE FROM products WHERE created_at < ?');
+    const delRes = delProductsStmt.run(cutoffTime) as unknown as RunResult;
+    deletedProducts = Number(delRes?.changes || 0);
+  } catch (err) {
+    console.warn('[cleanup] Erro ao limpar produtos antigos:', err);
+  }
+
+  let deletedCoupons = 0;
+  try {
+    const delCouponsStmt = db.prepare('DELETE FROM coupons WHERE created_at < ?');
+    const delRes = delCouponsStmt.run(cutoffTime) as unknown as RunResult;
+    deletedCoupons = Number(delRes?.changes || 0);
+  } catch (err) {
+    console.warn('[cleanup] Erro ao limpar cupons antigos:', err);
+  }
+
+  if (deletedProducts > 0 || deletedCoupons > 0 || deletedImages > 0) {
+    console.log(
+      `[cleanup] Limpeza de ${days} dias: ${deletedProducts} produtos, ${deletedCoupons} cupons e ${deletedImages} imagens removidos.`
+    );
+  }
+
+  return { deletedProducts, deletedCoupons, deletedImages };
+}
 export function saveCoupon(coupon: Coupon): boolean {
   const db = getDatabase();
   const stmt = db.prepare(`
@@ -486,6 +564,13 @@ export function getCoupons(query: CouponFilterQuery = {}): {
     const placeholders = query.channels.map(() => '?').join(',');
     conditions.push(`channel_name IN (${placeholders})`);
     params.push(...query.channels);
+  }
+
+  const withinDays = query.withinDays !== undefined ? query.withinDays : 7;
+  if (withinDays !== null && withinDays !== undefined && withinDays > 0) {
+    const cutoff = Date.now() - withinDays * 24 * 60 * 60 * 1000;
+    conditions.push('created_at >= ?');
+    params.push(cutoff);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

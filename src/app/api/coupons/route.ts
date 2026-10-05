@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
     const channels = channelsParam ? channelsParam.split(',').map((c) => c.trim()).filter(Boolean) : undefined;
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 50;
     const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!, 10) : 0;
+    const withinDaysParam = searchParams.get('withinDays');
+    const withinDays = withinDaysParam !== null ? parseInt(withinDaysParam, 10) : 7;
 
     const data = getCoupons({
       search,
@@ -19,6 +21,7 @@ export async function GET(req: NextRequest) {
       channels,
       limit,
       offset,
+      withinDays,
     });
 
     return NextResponse.json(data);

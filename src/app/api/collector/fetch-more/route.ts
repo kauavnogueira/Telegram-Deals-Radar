@@ -4,7 +4,7 @@ import { StringSession } from 'teleproto/sessions';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseTelegramMessage, parseTelegramCoupon } from '@/lib/parser';
-import { saveProduct, saveCoupon, getMonitoredChannels } from '@/lib/db';
+import { saveProduct, saveCoupon, getMonitoredChannels, cleanupOldRecords } from '@/lib/db';
 export async function POST(req: NextRequest) {
   try {
     const envPath = path.resolve(process.cwd(), '.env.local');
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     if (!fs.existsSync(imagesDir)) {
       fs.mkdirSync(imagesDir, { recursive: true });
     }
+    cleanupOldRecords(7);
 
     let totalCollected = 0;
     const channelsToScan = targetChannel && targetChannel !== 'all' ? [targetChannel] : channels;

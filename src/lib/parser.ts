@@ -464,11 +464,26 @@ export function extractProductTitle(rawText: string): string {
   return title;
 }
 
-function isDiscountOrCouponValue(text: string, index: number, matchLen: number): boolean {
-  const after = text.slice(index + matchLen, index + matchLen + 25).toLowerCase();
-  if (/^\s*(?:%|off\b|de desconto|em\s*r\$)/i.test(after)) return true;
-  const before = text.slice(Math.max(0, index - 35), index).toLowerCase();
-  if (/(?:até|limite|cupom|desconto|economize|resgate|em|acima de|a partir de|compras de)\s*$/i.test(before)) return true;
+export function isDiscountOrCouponValue(text: string, index: number, matchLen: number): boolean {
+  const after = text.slice(index + matchLen, index + matchLen + 35).toLowerCase();
+  if (/^\s*(?:%|off\b|de\s*desconto|em\s*r\$|de\s*cashback|de\s*volta|de\s*frete|de\s*economia|\/m[êe]s|ao\s*m[êe]s|mensais?)/i.test(after)) {
+    return true;
+  }
+
+  const before = text.slice(Math.max(0, index - 50), index).toLowerCase();
+  if (
+    /(?:at[eé]|limite|cupom(?:\s+de)?|desconto(?:\s+(?:de|adicional\s+de))?|economize(?:\s+at[eé])?|poupe|resgate|em|acima\s+de|a\s+partir\s+(?:de)?|compras?\s+(?:de|acima\s+de)|cashback(?:\s+de)?|receba\s+de\s+volta|frete(?:\s+(?:de|fixo))?|mensais?\s+de|mensalidade(?:\s+de)?|por\s+m[êe]s|cada\s+parcela(?:\s+de)?)\s*$/i.test(
+      before
+    )
+  ) {
+    return true;
+  }
+
+  // Preceded directly by an installment multiplier (e.g. "10x de " or "12x ")
+  if (/\b\d{1,2}\s*x\s*(?:de)?\s*$/i.test(before)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -482,11 +497,13 @@ export function extractAccuratePrices(rawText: string): {
 
   for (const line of lines) {
     const sameLineDePor = line.match(
-      /(?:de|era|de:)\s*R\$\s*([\d\.,]+)[^\n\r]*?(?:por|para|por:|apenas|sai por|→|\|)\s*R\$\s*([\d\.,]+)/i
+      /(?:de|era|de:)\s*R\$\s*([\d\.,]+)[^\n\r]*?(?:por|para|por:|apenas|sai por|→|\|)\s*(?:(\d{1,2})\s*x\s*(?:de)?\s*)?R\$\s*([\d\.,]+)/i
     );
     if (sameLineDePor) {
       const orig = parseBrlPrice(sameLineDePor[1]);
-      const pr = parseBrlPrice(sameLineDePor[2]);
+      const times = sameLineDePor[2] ? parseInt(sameLineDePor[2], 10) : 1;
+      const parsedUnit = parseBrlPrice(sameLineDePor[3]);
+      const pr = parsedUnit ? (times > 1 ? Number((times * parsedUnit).toFixed(2)) : parsedUnit) : null;
       if (orig && pr && orig > pr) {
         return { originalPrice: orig, price: pr };
       }
@@ -497,10 +514,12 @@ export function extractAccuratePrices(rawText: string): {
     const cur = lines[i];
     const nxt = lines[i + 1];
     const deMatch = cur.match(/^(?:⛔\s*)?(?:de|era|valor original)\s*[:]?\s*R\$\s*([\d\.,]+)/i);
-    const porMatch = nxt.match(/^(?:✅\s*)?(?:por|para|por:|apenas|sai por|valor)\s*[:]?\s*R\$\s*([\d\.,]+)/i);
+    const porMatch = nxt.match(/^(?:✅\s*)?(?:por|para|por:|apenas|sai por|valor)\s*[:]?\s*(?:(\d{1,2})\s*x\s*(?:de)?\s*)?R\$\s*([\d\.,]+)/i);
     if (deMatch && porMatch) {
       const orig = parseBrlPrice(deMatch[1]);
-      const pr = parseBrlPrice(porMatch[1]);
+      const times = porMatch[1] ? parseInt(porMatch[1], 10) : 1;
+      const parsedUnit = parseBrlPrice(porMatch[2]);
+      const pr = parsedUnit ? (times > 1 ? Number((times * parsedUnit).toFixed(2)) : parsedUnit) : null;
       if (orig && pr && orig > pr) {
         return { originalPrice: orig, price: pr };
       }
@@ -509,18 +528,26 @@ export function extractAccuratePrices(rawText: string): {
 
   const explicitFinalPatterns = [
     /(?:à vista|no pix|no boleto|pix)\s*[:=]?\s*(?:por)?\s*R\$\s*([\d\.,]+)/i,
-    /(?:por apenas|por:|sai por|apenas|preço:|valor:)\s*R\$\s*([\d\.,]+)/i,
+    /(?:por apenas|por:|sai por|apenas|preço:|valor:)\s*(?:(\d{1,2})\s*x\s*(?:de)?\s*)?R\$\s*([\d\.,]+)/i,
     /R\$\s*([\d\.,]+)\s*(?:à vista|no pix|no boleto)/i,
-    /[💰💵🏆💶]\s*(?:por)?\s*R\$\s*([\d\.,]+)/i,
+    /[💰💵🏆💶]\s*(?:por)?\s*(?:(\d{1,2})\s*x\s*(?:de)?\s*)?R\$\s*([\d\.,]+)/i,
   ];
 
   for (const regex of explicitFinalPatterns) {
     const match = rawText.match(regex);
-    if (match && match[1] && match.index !== undefined) {
+    if (match && match.index !== undefined) {
+      let times = 1;
+      let priceStr = '';
+      if (match.length >= 3 && match[2]) {
+        times = match[1] ? parseInt(match[1], 10) : 1;
+        priceStr = match[2];
+      } else if (match[1]) {
+        priceStr = match[1];
+      }
       if (isDiscountOrCouponValue(rawText, match.index, match[0].length)) continue;
-      const val = parseBrlPrice(match[1]);
+      const val = parseBrlPrice(priceStr);
       if (val && val > 0) {
-        price = val;
+        price = times > 1 ? Number((times * val).toFixed(2)) : val;
         break;
       }
     }
@@ -542,9 +569,8 @@ export function extractAccuratePrices(rawText: string): {
 
     for (const line of lines) {
       const lower = line.toLowerCase();
-      if (/\d{1,2}\s*x\s*(?:de)?\s*R\$/i.test(line)) continue;
-      if (lower.includes('frete')) continue;
       if (
+        lower.includes('frete') ||
         lower.includes('cupom') ||
         lower.includes('resgate') ||
         lower.includes('limite') ||
@@ -552,7 +578,9 @@ export function extractAccuratePrices(rawText: string): {
         lower.includes('off em r$') ||
         lower.includes('off acima') ||
         lower.includes('off:') ||
-        lower.includes('a partir de r$')
+        lower.includes('a partir de') ||
+        lower.includes('economize') ||
+        lower.includes('de volta')
       ) {
         continue;
       }
@@ -574,6 +602,19 @@ export function extractAccuratePrices(rawText: string): {
     }
   }
 
+  // Check if price was captured as single installment and heal it
+  if (price && price > 0) {
+    const allInstallments = rawText.matchAll(/\b(\d{1,2})\s*x\s*(?:de)?\s*R\$\s*([\d\.,]+)/gi);
+    for (const inst of allInstallments) {
+      const times = parseInt(inst[1], 10);
+      const instVal = parseBrlPrice(inst[2]);
+      if (times > 1 && instVal && Math.abs(price - instVal) < 0.05) {
+        price = Number((times * instVal).toFixed(2));
+        break;
+      }
+    }
+  }
+
   if (!price) {
     const installmentMatch = rawText.match(/(\d{1,2})\s*x\s*(?:de)?\s*R\$\s*([\d\.,]+)/i);
     if (installmentMatch) {
@@ -591,6 +632,121 @@ export function extractAccuratePrices(rawText: string): {
   }
 
   return { price, originalPrice };
+}
+
+export interface PriceValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
+export function validateProductPrice(product: {
+  title: string;
+  price: number;
+  originalPrice?: number | null;
+  discountPercent?: number | null;
+  rawText?: string;
+}): PriceValidationResult {
+  if (!product || !product.price || product.price <= 0) {
+    return { valid: false, reason: 'Preço ausente ou menor que zero' };
+  }
+
+  const raw = (product.rawText || '').toLowerCase();
+  const title = (product.title || '').toLowerCase();
+  const normalizedTitle = title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Preço mínimo absoluto (R$ 5,00)
+  const isFreeSampleOrCoupon =
+    /\b(?:gratis|gr[aá]tis|brinde|amostra|cupom)\b/i.test(normalizedTitle) ||
+    /\b(?:100%\s*off|de\s*gra[cç]a)\b/i.test(raw);
+
+  if (product.price < 5.0 && !isFreeSampleOrCoupon) {
+    return { valid: false, reason: `Preço R$ ${product.price.toFixed(2)} abaixo do mínimo aceitável (R$ 5,00)` };
+  }
+
+  // 2. Verificar se o produto é acessório/peça secundária
+  const hasAccessoryKeyword =
+    /\b(?:capa|capinha|case|pelicula|pel[ií]cula|cabo|cabos|carregador|adaptador|suporte|adesivo|skin|bolsa|mochila|cooler|flanela|chaveiro|jogo|jogos|m[ií]dia|game|bateria|pilha|refil|filtro|pe[cç]a|pe[cç]as)\b/i.test(
+      normalizedTitle
+    );
+  const isBundleWithGames = /\b(?:com\s+\d*\s*jogos?|bundle)\b/i.test(normalizedTitle);
+  const isAccessory = hasAccessoryKeyword && !isBundleWithGames;
+
+  // 3. Pisos mínimos por categoria de alto valor (Anti falso-positivo)
+  if (!isAccessory) {
+    const isSmartphone = /\b(?:iphone(?:\s*(?:1[1-6]|se|x|xs|xr|pro|max))?|galaxy\s*(?:s\d{1,2}|z\s*(?:flip|fold)\d?|a\d{2}|m\d{2})|redmi\s*note\s*\d+|xiaomi\s*1[2-5]|motorola\s*edge|moto\s*g\d{2}|poco\s*[xf]\d+)\b/i.test(
+      normalizedTitle
+    );
+    if (isSmartphone && product.price < 150) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com smartphone (mínimo R$ 150,00)`,
+      };
+    }
+
+    const isNotebook = /\b(?:notebook|laptop|macbook(?:\s*air|\s*pro)?|thinkpad|ideapad|nitro\s*5|dell\s*inspiron|acer\s*aspire|computador\s*gamer|pc\s*gamer)\b/i.test(
+      normalizedTitle
+    );
+    if (isNotebook && product.price < 350) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com notebook/computador (mínimo R$ 350,00)`,
+      };
+    }
+
+    const isSmartTv = /\b(?:smart\s*tv|televis[aã]o|tv\s*\d{2}["”]|oled\s*tv|qled\s*tv|uhd\s*4k\s*tv)\b/i.test(
+      normalizedTitle
+    );
+    if (isSmartTv && product.price < 300) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com Smart TV (mínimo R$ 300,00)`,
+      };
+    }
+
+    const isConsole = /\b(?:playstation\s*5|ps5|xbox\s*series\s*[xs]|nintendo\s*switch)\b/i.test(
+      normalizedTitle
+    );
+    if (isConsole && product.price < 350) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com console (mínimo R$ 350,00)`,
+      };
+    }
+
+    const isGpu = /\b(?:geforce\s*rtx\s*\d{4}|radeon\s*rx\s*\d{4}|rtx\s*[345]\d{3})\b/i.test(
+      normalizedTitle
+    );
+    if (isGpu && product.price < 350) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com placa de vídeo (mínimo R$ 350,00)`,
+      };
+    }
+
+    const isAppliance = /\b(?:geladeira|refrigerador|m[aá]quina\s*de\s*lavar|lava\s*e\s*seca|ar\s*condicionado|fog[aã]o\s*\d\s*bocas)\b/i.test(
+      normalizedTitle
+    );
+    if (isAppliance && product.price < 250) {
+      return {
+        valid: false,
+        reason: `Preço R$ ${product.price.toFixed(2)} incompatível com eletrodoméstico grande (mínimo R$ 250,00)`,
+      };
+    }
+  }
+
+  // 4. Teto de Desconto Absurdo (> 85%) com valor baixo
+  if (product.discountPercent && product.discountPercent > 85) {
+    if (product.originalPrice && product.originalPrice > 0 && product.price < 80.0) {
+      return {
+        valid: false,
+        reason: `Desconto de ${product.discountPercent}% com preço muito baixo R$ ${product.price.toFixed(2)} (falso positivo)`,
+      };
+    }
+  }
+
+  return { valid: true };
 }
 
 export function parseTelegramMessage(
@@ -629,10 +785,29 @@ export function parseTelegramMessage(
 
   const store = detectStore(primaryUrl, rawText);
   const title = extractProductTitle(rawText);
+
+  const validation = validateProductPrice({
+    title,
+    price,
+    originalPrice,
+    discountPercent,
+    rawText,
+  });
+
+  if (!validation.valid) {
+    return null;
+  }
+
+  let safeDiscount = discountPercent;
+  let safeOriginalPrice = originalPrice && originalPrice > price ? originalPrice : null;
+  if (safeDiscount !== null && safeDiscount > 85) {
+    safeDiscount = null;
+    safeOriginalPrice = null;
+  }
+
   const id = options.messageId
     ? `${options.channelName.replace('@', '')}_${options.messageId}`
     : `${options.channelName.replace('@', '')}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
   return {
     id,
     telegramMessageId: options.messageId,
@@ -640,8 +815,8 @@ export function parseTelegramMessage(
     channelId: options.channelId,
     title,
     price,
-    originalPrice: originalPrice && originalPrice > price ? originalPrice : null,
-    discountPercent,
+    originalPrice: safeOriginalPrice,
+    discountPercent: safeDiscount,
     coupon,
     url: primaryUrl || '#',
     store,
