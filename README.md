@@ -102,8 +102,26 @@ Environment variables are loaded from `.env.local`:
 | `npm run start` | Runs the Next.js production server. |
 | `npm test` | Executes the automated test suite (`tests/**/*.test.ts`). |
 | `npm run login` | Re-authenticates Telegram session if the token expires. |
+| `npm run bot` | Runs the interactive Telegram Bot commands listener. |
+| `npm run notify:test` | Sends a sample deal notification to test Telegram Bot delivery. |
 
 ---
+
+## Telegram Bot Interactive Commands
+
+You can manage your notification filters directly inside Telegram by messaging your bot:
+
+- `/filtro <termo1, termo2>` — Sets monitored keywords (e.g. `/filtro iphone, notebook, ps5`).
+- `/adicionar <termo>` — Adds new keyword(s) to your active list (e.g. `/adicionar rtx 4060`).
+- `/remover <termo>` — Removes a keyword from your active list (e.g. `/remover notebook`).
+- `/limpar` — Clears all keyword filters (receives all channel offers).
+- `/desconto <porcentagem>` — Sets minimum discount % (e.g. `/desconto 25` or `0` for any discount).
+- `/status` — Displays current alert status, discount threshold, and monitored keywords.
+- `/ativar` — Turns on offer notifications.
+- `/desativar` — Pauses offer notifications.
+- `/testar` — Sends a test offer payload immediately.
+- `/ultimas` — Retrieves the latest 3 deals collected in the database.
+- `/ajuda` — Shows the full list of available commands.
 
 ## API Endpoints
 

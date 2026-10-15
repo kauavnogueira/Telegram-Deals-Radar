@@ -12,8 +12,9 @@
     "collector": "tsx src/scripts/collect.ts",
     "seed": "tsx src/scripts/seed.ts",
     "fix:titles": "tsx src/scripts/fix-titles.ts",
-    "test": "tsx --test tests/**/*.test.ts",
-    "notify:test": "tsx src/scripts/notify-test.ts"
+    "test": "tsx --test --test-concurrency=1 tests/**/*.test.ts",
+    "notify:test": "tsx src/scripts/notify-test.ts",
+    "bot": "tsx src/scripts/bot.ts"
   },
   "dependencies": {
     "input": "^1.0.1",

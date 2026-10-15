@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Product } from './types';
+import { Product, BotSubscriber } from './types';
+import { getAllActiveSubscribers, getSubscriber, upsertSubscriber } from './db';
 
 let cachedEnv: Record<string, string> | null = null;
 
@@ -132,11 +133,15 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;');
 }
 
-export async function sendTelegramNotification(product: Product): Promise<{ success: boolean; error?: string }> {
+export async function sendTelegramNotification(
+  product: Product,
+  targetChatId?: string
+): Promise<{ success: boolean; error?: string }> {
   const config = getNotifierConfig();
+  const chatId = targetChatId || config.chatId;
 
-  if (!config.botToken || !config.chatId) {
-    return { success: false, error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_USER_CHAT_ID não definidos' };
+  if (!config.botToken || !chatId) {
+    return { success: false, error: 'TELEGRAM_BOT_TOKEN ou Chat ID não definidos' };
   }
 
   const { text, inlineUrl } = formatProductMessage(product);
@@ -152,12 +157,11 @@ export async function sendTelegramNotification(product: Product): Promise<{ succ
   }
 
   const payload: TelegramPayload = {
-    chat_id: config.chatId,
+    chat_id: chatId,
     text,
     parse_mode: 'HTML',
     disable_web_page_preview: false,
   };
-
   if (inlineUrl) {
     payload.reply_markup = {
       inline_keyboard: [
@@ -203,11 +207,15 @@ export async function sendTelegramNotification(product: Product): Promise<{ succ
   }
 }
 
-export async function sendTelegramCustomMessage(message: string): Promise<{ success: boolean; error?: string }> {
+export async function sendTelegramCustomMessage(
+  message: string,
+  targetChatId?: string
+): Promise<{ success: boolean; error?: string }> {
   const config = getNotifierConfig();
+  const chatId = targetChatId || config.chatId;
 
-  if (!config.botToken || !config.chatId) {
-    return { success: false, error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_USER_CHAT_ID não definidos' };
+  if (!config.botToken || !chatId) {
+    return { success: false, error: 'TELEGRAM_BOT_TOKEN ou Chat ID não definidos' };
   }
 
   try {
@@ -218,7 +226,7 @@ export async function sendTelegramCustomMessage(message: string): Promise<{ succ
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        chat_id: config.chatId,
+        chat_id: chatId,
         text: message,
         parse_mode: 'HTML',
       }),
@@ -235,4 +243,77 @@ export async function sendTelegramCustomMessage(message: string): Promise<{ succ
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, error: msg };
   }
+}
+
+export function matchProductWithFilter(
+  product: Product,
+  filter: { minDiscount?: number; keywords?: string[] }
+): boolean {
+  if (filter.keywords && filter.keywords.length > 0) {
+    const titleLower = (product.title || '').toLowerCase();
+    const rawLower = (product.rawText || '').toLowerCase();
+    const matched = filter.keywords.some((kw) => {
+      const cleanKw = kw.trim().toLowerCase();
+      return cleanKw && (titleLower.includes(cleanKw) || rawLower.includes(cleanKw));
+    });
+    if (!matched) return false;
+  }
+
+  if (filter.minDiscount !== undefined && filter.minDiscount > 0) {
+    const discount = product.discountPercent || 0;
+    if (discount < filter.minDiscount) return false;
+  }
+
+  return true;
+}
+
+export async function notifyAllMatchingSubscribers(
+  product: Product
+): Promise<{ notified: number; errors: number }> {
+  const config = getNotifierConfig();
+  if (!config.botToken) {
+    return { notified: 0, errors: 0 };
+  }
+
+  let subscribers = getAllActiveSubscribers();
+
+  // Fallback to .env configuration if no subscribers in DB
+  if (subscribers.length === 0 && config.chatId) {
+    subscribers = [
+      {
+        chatId: config.chatId,
+        isEnabled: config.enabled,
+        minDiscount: config.minDiscount,
+        keywords: config.keywords,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ];
+  }
+
+  if (sentProductIds.has(product.id)) {
+    return { notified: 0, errors: 0 };
+  }
+
+  let notified = 0;
+  let errors = 0;
+
+  for (const sub of subscribers) {
+    if (!sub.isEnabled) continue;
+    if (matchProductWithFilter(product, { minDiscount: sub.minDiscount, keywords: sub.keywords })) {
+      const res = await sendTelegramNotification(product, sub.chatId);
+      if (res.success) notified++;
+      else errors++;
+    }
+  }
+
+  sentProductIds.add(product.id);
+  if (sentProductIds.size > 2000) {
+    const firstItems = Array.from(sentProductIds).slice(0, 500);
+    for (const id of firstItems) {
+      sentProductIds.delete(id);
+    }
+  }
+
+  return { notified, errors };
 }

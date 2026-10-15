@@ -99,3 +99,14 @@ export interface TelegramAccountChannel {
   isMonitored?: boolean;
 }
 
+export interface BotSubscriber {
+  chatId: string;
+  isEnabled: boolean;
+  minDiscount: number;
+  keywords: string[];
+  username?: string | null;
+  firstName?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+

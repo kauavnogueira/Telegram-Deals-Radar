@@ -75,11 +75,11 @@ test('7-day retention: cleanupOldRecords purges products and coupons older than 
   assert.ok(cleanupRes.deletedCoupons >= 1);
 
   // Check coupons
-  const couponQuery = getCoupons({ search: 'Cupom' });
-  const hasOldCoupon = couponQuery.coupons.some((c) => c.id === oldCoupon.id);
-  const hasFreshCoupon = couponQuery.coupons.some((c) => c.id === freshCoupon.id);
-  assert.equal(hasOldCoupon, false, 'Old coupon must be deleted');
-  assert.equal(hasFreshCoupon, true, 'Fresh coupon must remain');
+  // Check coupons specifically by their unique codes
+  const oldCouponQuery = getCoupons({ search: oldCoupon.code, withinDays: 0 });
+  const freshCouponQuery = getCoupons({ search: freshCoupon.code, withinDays: 7 });
+  assert.equal(oldCouponQuery.total, 0, 'Old coupon must be deleted');
+  assert.equal(freshCouponQuery.total, 1, 'Fresh coupon must remain');
 
 
   // Check if old product was deleted from DB completely

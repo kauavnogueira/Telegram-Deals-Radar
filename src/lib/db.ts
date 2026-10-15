@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import { Product, ProductFilterQuery, SortOption, Coupon, CouponFilterQuery, MonitoredChannel } from './types';
+import { Product, ProductFilterQuery, SortOption, Coupon, CouponFilterQuery, MonitoredChannel, BotSubscriber } from './types';
 import { extractProductTitle, isStoreBanner } from './parser';
 const DB_DIR = path.resolve(process.cwd(), 'data');
 if (!fs.existsSync(DB_DIR)) {
@@ -103,6 +103,19 @@ function initTables(db: DatabaseSync) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_monitored_channels_username ON monitored_channels (username);
+
+    CREATE TABLE IF NOT EXISTS bot_subscribers (
+      chat_id TEXT PRIMARY KEY,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      min_discount INTEGER NOT NULL DEFAULT 0,
+      keywords TEXT NOT NULL DEFAULT '',
+      username TEXT,
+      first_name TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bot_subscribers_enabled ON bot_subscribers (is_enabled);
   `);
 
   try {
@@ -851,5 +864,120 @@ export function toggleMonitoredChannel(rawChannel: string, isActive: boolean): b
   } catch (err) {
     console.error('Erro ao alternar status do canal:', err);
     return false;
+  }
+}
+
+interface BotSubscriberRow {
+  chat_id: string;
+  is_enabled: number;
+  min_discount: number;
+  keywords: string;
+  username?: string | null;
+  first_name?: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function mapRowToSubscriber(row: BotSubscriberRow): BotSubscriber {
+  const keywords = row.keywords
+    ? row.keywords
+        .split(',')
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+
+  return {
+    chatId: String(row.chat_id),
+    isEnabled: Boolean(row.is_enabled),
+    minDiscount: Number(row.min_discount || 0),
+    keywords,
+    username: row.username || null,
+    firstName: row.first_name || null,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+export function getSubscriber(chatId: string): BotSubscriber | null {
+  const db = getDatabase();
+  try {
+    const row = db
+      .prepare('SELECT * FROM bot_subscribers WHERE chat_id = ?')
+      .get(String(chatId)) as unknown as BotSubscriberRow | undefined;
+    return row ? mapRowToSubscriber(row) : null;
+  } catch (err) {
+    console.error('Erro ao buscar assinante do bot:', err);
+    return null;
+  }
+}
+
+export function upsertSubscriber(sub: {
+  chatId: string;
+  isEnabled?: boolean;
+  minDiscount?: number;
+  keywords?: string[];
+  username?: string | null;
+  firstName?: string | null;
+}): BotSubscriber {
+  const db = getDatabase();
+  const existing = getSubscriber(sub.chatId);
+  const now = Date.now();
+
+  const isEnabled = sub.isEnabled !== undefined ? sub.isEnabled : (existing?.isEnabled ?? true);
+  const minDiscount = sub.minDiscount !== undefined ? sub.minDiscount : (existing?.minDiscount ?? 0);
+  const keywordsArr = sub.keywords !== undefined ? sub.keywords : (existing?.keywords ?? []);
+  const keywordsStr = keywordsArr.map((k) => k.trim().toLowerCase()).filter(Boolean).join(',');
+  const username = sub.username !== undefined ? sub.username : (existing?.username ?? null);
+  const firstName = sub.firstName !== undefined ? sub.firstName : (existing?.firstName ?? null);
+  const createdAt = existing?.createdAt ?? now;
+
+  const stmt = db.prepare(`
+    INSERT INTO bot_subscribers (
+      chat_id, is_enabled, min_discount, keywords, username, first_name, created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?
+    )
+    ON CONFLICT(chat_id) DO UPDATE SET
+      is_enabled = excluded.is_enabled,
+      min_discount = excluded.min_discount,
+      keywords = excluded.keywords,
+      username = COALESCE(excluded.username, bot_subscribers.username),
+      first_name = COALESCE(excluded.first_name, bot_subscribers.first_name),
+      updated_at = excluded.updated_at;
+  `);
+
+  stmt.run(
+    String(sub.chatId),
+    isEnabled ? 1 : 0,
+    minDiscount,
+    keywordsStr,
+    username,
+    firstName,
+    createdAt,
+    now
+  );
+
+  return {
+    chatId: String(sub.chatId),
+    isEnabled,
+    minDiscount,
+    keywords: keywordsArr.map((k) => k.trim().toLowerCase()).filter(Boolean),
+    username,
+    firstName,
+    createdAt,
+    updatedAt: now,
+  };
+}
+
+export function getAllActiveSubscribers(): BotSubscriber[] {
+  const db = getDatabase();
+  try {
+    const rows = db
+      .prepare('SELECT * FROM bot_subscribers WHERE is_enabled = 1')
+      .all() as unknown as BotSubscriberRow[];
+    return rows.map(mapRowToSubscriber);
+  } catch (err) {
+    console.error('Erro ao buscar assinantes ativos:', err);
+    return [];
   }
 }

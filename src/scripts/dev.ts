@@ -32,19 +32,32 @@ pipeWithPrefix(nextProc, '[web]', '\x1b[36m');
 
 const envPath = path.resolve(rootDir, '.env.local');
 let hasSession = false;
+let hasBotToken = false;
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf-8');
   hasSession = Boolean(envContent.match(/TELEGRAM_STRING_SESSION\s*=\s*([^\r\n]+)/));
+  hasBotToken = Boolean(envContent.match(/TELEGRAM_BOT_TOKEN\s*=\s*([^\r\n]+)/));
 }
 
 let collectorProc: ChildProcess | null = null;
+let botProc: ChildProcess | null = null;
+
+if (hasBotToken) {
+  botProc = spawn('npx', ['tsx', 'src/scripts/bot.ts'], {
+    cwd: rootDir,
+    shell: true,
+    stdio: ['inherit', 'pipe', 'pipe'],
+    env: { ...process.env, FORCE_COLOR: '1' },
+  });
+  pipeWithPrefix(botProc, '[bot]', '\x1b[32m');
+}
 
 if (hasSession) {
   collectorProc = spawn('npx', ['tsx', 'src/scripts/collect.ts'], {
     cwd: rootDir,
     shell: true,
     stdio: ['inherit', 'pipe', 'pipe'],
-    env: { ...process.env, FORCE_COLOR: '1' },
+    env: { ...process.env, FORCE_COLOR: '1', BOT_MANAGED_BY_DEV: '1' },
   });
   pipeWithPrefix(collectorProc, '[telegram]', '\x1b[35m');
 } else {
@@ -60,6 +73,11 @@ function shutdown(signal: string) {
       collectorProc.kill('SIGINT');
     } catch {}
   }
+  if (botProc) {
+    try {
+      botProc.kill('SIGINT');
+    } catch {}
+  }
   try {
     nextProc.kill('SIGINT');
   } catch {}
@@ -68,6 +86,11 @@ function shutdown(signal: string) {
     if (collectorProc) {
       try {
         collectorProc.kill('SIGKILL');
+      } catch {}
+    }
+    if (botProc) {
+      try {
+        botProc.kill('SIGKILL');
       } catch {}
     }
     try {
@@ -93,6 +116,18 @@ if (collectorProc) {
         console.log('\x1b[33m[telegram] Collector exited cleanly.\x1b[0m');
       } else {
         console.log(`\x1b[33m[telegram] Collector exited with code ${code}.\x1b[0m`);
+      }
+    }
+  });
+}
+
+if (botProc) {
+  botProc.on('exit', (code) => {
+    if (!isExiting) {
+      if (code === 0) {
+        console.log('\x1b[33m[bot] Bot listener exited cleanly.\x1b[0m');
+      } else {
+        console.log(`\x1b[33m[bot] Bot listener exited with code ${code}.\x1b[0m`);
       }
     }
   });

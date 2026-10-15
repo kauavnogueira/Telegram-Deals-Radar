@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseTelegramMessage, parseTelegramCoupon } from '../lib/parser';
 import { saveProduct, hasProductByMessageId, saveCoupon, getMonitoredChannels, cleanupOldRecords } from '../lib/db';
-import { shouldNotifyProduct, sendTelegramNotification } from '../lib/notifier';
+import { shouldNotifyProduct, sendTelegramNotification, notifyAllMatchingSubscribers } from '../lib/notifier';
+import { startBotListener } from '../lib/bot-service';
 const envPath = path.resolve(process.cwd(), '.env.local');
 let envContent = '';
 if (fs.existsSync(envPath)) {
@@ -131,6 +132,11 @@ async function main() {
   }
 
   console.log('[collector] Listening for incoming messages...');
+  if (process.env.BOT_MANAGED_BY_DEV !== '1') {
+    startBotListener().catch((err) => {
+      console.warn('[bot] Falha ao iniciar listener:', err);
+    });
+  }
   client.addEventHandler(async (event: unknown) => {
     try {
       const ev = event as { message?: { message?: string; id?: number; date?: number; media?: unknown; getChat?: () => Promise<unknown> } };
@@ -176,20 +182,15 @@ async function main() {
         saveProduct(product);
         console.log(`[oferta] ${product.title} - R$ ${product.price.toFixed(2)} (${channelUsername})`);
 
-        const check = shouldNotifyProduct(product);
-        if (check.shouldNotify) {
-          sendTelegramNotification(product)
-            .then((res) => {
-              if (res.success) {
-                console.log(`[alerta privado] Oferta enviada para seu Telegram: ${product.title}`);
-              } else if (res.error) {
-                console.warn(`[alerta privado] Falha ao enviar: ${res.error}`);
-              }
-            })
-            .catch((err) => {
-              console.warn('[alerta privado] Erro:', err);
-            });
-        }
+        notifyAllMatchingSubscribers(product)
+          .then((res) => {
+            if (res.notified > 0) {
+              console.log(`[alerta bot] Oferta enviada para ${res.notified} assinante(s): ${product.title}`);
+            }
+          })
+          .catch((err) => {
+            console.warn('[alerta bot] Erro ao notificar assinantes:', err);
+          });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -197,6 +198,7 @@ async function main() {
     }
   }, new NewMessage({}));
 }
+
 
 main().catch((err) => {
   console.error('[collector] Error:', err);
