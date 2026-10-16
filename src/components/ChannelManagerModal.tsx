@@ -229,11 +229,11 @@ export const ChannelManagerModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-[#0e1422] border border-white/[0.1] rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col p-5 sm:p-6 shadow-2xl relative text-slate-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-[#0e1422] border border-white/[0.1] rounded-2xl w-full max-w-xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col p-4 sm:p-6 shadow-2xl relative text-slate-300">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-100 p-1.5 rounded-lg hover:bg-white/[0.05] transition"
+          className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-100 p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-white/[0.05] transition"
           aria-label="Fechar"
         >
           <X className="w-4 h-4" />
@@ -372,7 +372,7 @@ export const ChannelManagerModal: React.FC<Props> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
             <span className="text-[11px] text-slate-400">
               {manualInput
                 ? 'Dica: Você deve ter entrado no canal na sua conta Telegram.'
@@ -385,7 +385,7 @@ export const ChannelManagerModal: React.FC<Props> = ({
             <button
               type="submit"
               disabled={adding || !newChannel.trim()}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition flex items-center gap-1.5 active:scale-95 shadow-xs shrink-0"
+              className="w-full sm:w-auto px-3.5 py-2 sm:py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5 active:scale-95 shadow-xs shrink-0"
             >
               {adding ? (
                 <>
@@ -432,12 +432,17 @@ export const ChannelManagerModal: React.FC<Props> = ({
                   <button
                     onClick={() => handleToggleChannel(ch.username, ch.isActive)}
                     title={ch.isActive ? 'Clique para desativar' : 'Clique para ativar'}
-                    className={`w-2 h-2 rounded-full shrink-0 transition-transform ${
-                      ch.isActive
-                        ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
-                        : 'bg-slate-600'
-                    }`}
-                  />
+                    className="p-2 -m-1 rounded-full flex items-center justify-center shrink-0 cursor-pointer"
+                    aria-label={ch.isActive ? 'Desativar canal' : 'Ativar canal'}
+                  >
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full transition-transform ${
+                        ch.isActive
+                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
+                          : 'bg-slate-600'
+                      }`}
+                    />
+                  </button>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs text-slate-100 font-medium truncate">
@@ -473,16 +478,18 @@ export const ChannelManagerModal: React.FC<Props> = ({
                   <button
                     onClick={() => handleSyncChannel(ch.username)}
                     disabled={isSyncing}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-white/[0.06] transition disabled:opacity-50"
+                    className="p-2 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-white/[0.06] transition disabled:opacity-50 min-w-[34px] min-h-[34px] flex items-center justify-center"
                     title="Puxar histórico dos últimos 7 dias deste canal"
+                    aria-label="Puxar histórico dos últimos 7 dias deste canal"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
                   </button>
 
                   <button
                     onClick={() => handleRemoveChannel(ch.username)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition min-w-[34px] min-h-[34px] flex items-center justify-center"
                     title="Excluir canal"
+                    aria-label="Excluir canal"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
