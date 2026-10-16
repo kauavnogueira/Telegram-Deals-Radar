@@ -36,7 +36,7 @@ async function main() {
   const existingApiId = getEnvValue(envContent, 'TELEGRAM_API_ID');
   const existingApiHash = getEnvValue(envContent, 'TELEGRAM_API_HASH');
   const existingSession = getEnvValue(envContent, 'TELEGRAM_STRING_SESSION');
-
+  const existingChannels = getEnvValue(envContent, 'TELEGRAM_CHANNELS');
   if (existingApiId && existingApiHash && existingSession) {
     console.log('Existing credentials detected in .env.local.');
     const reconfigure = await input.confirm('Reconfigure credentials?', { default: false });
@@ -48,9 +48,10 @@ async function main() {
 
   let apiId = 0;
   while (!apiId) {
-    const rawApiId = await input.text('Telegram API ID:', {
-      default: existingApiId || '',
-    });
+    const rawApiId = await input.text(
+      'Telegram API ID:',
+      existingApiId ? { default: existingApiId } : {}
+    );
     const parsed = parseInt(rawApiId.trim(), 10);
     if (!isNaN(parsed) && parsed > 0) {
       apiId = parsed;
@@ -61,9 +62,10 @@ async function main() {
 
   let apiHash = '';
   while (!apiHash) {
-    const rawApiHash = await input.text('Telegram API HASH:', {
-      default: existingApiHash || '',
-    });
+    const rawApiHash = await input.text(
+      'Telegram API HASH:',
+      existingApiHash ? { default: existingApiHash } : {}
+    );
     const cleaned = rawApiHash.trim();
     if (cleaned.length >= 10) {
       apiHash = cleaned;
@@ -72,9 +74,11 @@ async function main() {
     }
   }
 
-  const rawChannels = await input.text('Channels to monitor (comma-separated):', {
-    default: '@promobitoficial, @ofertaztelegram',
-  });
+  const defaultChannels = existingChannels || '@promobitoficial, @ofertaztelegram';
+  const rawChannels = await input.text(
+    'Channels to monitor (comma-separated):',
+    defaultChannels ? { default: defaultChannels } : {}
+  );
 
   const initialChannels = rawChannels
     .split(',')
